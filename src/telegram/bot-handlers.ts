@@ -662,6 +662,34 @@ export const registerTelegramHandlers = ({
         return;
       }
 
+      // Handle /choose command with inline keyboard (server-side, no model involvement)
+      const messageText = typeof msg.text === "string" ? msg.text.trim() : "";
+      if (messageText === "/choose" || messageText.startsWith("/choose ")) {
+        const chatId = msg.chat.id;
+        const threadId = msg.message_thread_id;
+        
+        // Build inline keyboard with model selection buttons
+        const inlineKeyboard = {
+          inline_keyboard: [
+            [{ text: "☀️ Solar Pro (free)", callback_data: "/model openrouter/upstage/solar-pro-3:free" }],
+            [{ text: "🌙 Kimi K2.5", callback_data: "/model nvidia/moonshotai/kimi-k2.5" }],
+            [{ text: "🔺 Trinity (free)", callback_data: "/model openrouter/arcee-ai/trinity-large-preview:free" }],
+            [{ text: "💻 GPT-5.2 Codex", callback_data: "/model openai-codex/gpt-5.2-codex" }],
+          ],
+        };
+
+        try {
+          await bot.api.sendMessage(chatId, "Обери модель:", {
+            reply_markup: inlineKeyboard,
+            ...(threadId ? { message_thread_id: threadId } : {}),
+          });
+          return; // Don't process further - command handled server-side
+        } catch (err) {
+          runtime.error?.(danger(`Failed to send /choose keyboard: ${String(err)}`));
+          // Fall through to normal processing if sending fails
+        }
+      }
+
       const chatId = msg.chat.id;
       const isGroup = msg.chat.type === "group" || msg.chat.type === "supergroup";
       const messageThreadId = (msg as { message_thread_id?: number }).message_thread_id;
