@@ -600,6 +600,57 @@ export const registerTelegramHandlers = ({
     }
   });
 
+  // Handle inline queries for model selection (@botname /model)
+  bot.on("inline_query", async (ctx) => {
+    const query = ctx.inlineQuery?.query ?? "";
+    const queryId = ctx.inlineQuery?.id;
+    if (!queryId) return;
+
+    // Check if query starts with "/model" or empty (show all models)
+    if (!query.startsWith("/model") && query.trim() !== "") {
+      // Return empty for non-model queries
+      await bot.api.answerInlineQuery(queryId, []);
+      return;
+    }
+
+    // Build models list from config providers
+    const models = [];
+    const providers = cfg.models?.providers;
+    if (providers) {
+      for (const [providerId, provider] of Object.entries(providers)) {
+        if (provider.models && Array.isArray(provider.models)) {
+          for (const model of provider.models) {
+            const modelId = providerId + "/" + model.id;
+            models.push({
+              id: modelId,
+              name: model.name || model.id,
+              desc: model.api || providerId,
+            });
+          }
+        }
+      }
+    }
+
+    const results = models.map((model) => ({
+      type: "article" as const,
+      id: model.id,
+      title: model.name,
+      description: model.desc,
+      input_message_content: {
+        message_text: `/model ${model.id}`,
+      },
+    }));
+
+    try {
+      await bot.api.answerInlineQuery(queryId, results, {
+        cache_time: 0,
+        is_personal: true,
+      });
+    } catch (err) {
+      runtime.error?.(danger(`inline query failed: ${String(err)}`));
+    }
+  });
+
   // Handle group migration to supergroup (chat ID changes)
   bot.on("message:migrate_to_chat_id", async (ctx) => {
     try {
@@ -667,13 +718,23 @@ export const registerTelegramHandlers = ({
       if (messageText === "/choose" || messageText.startsWith("/choose ")) {
         const chatId = msg.chat.id;
         const threadId = msg.message_thread_id;
-        
+
         // Build inline keyboard with model selection buttons
         const inlineKeyboard = {
           inline_keyboard: [
-            [{ text: "☀️ Solar Pro (free)", callback_data: "/model openrouter/upstage/solar-pro-3:free" }],
+            [
+              {
+                text: "☀️ Solar Pro (free)",
+                callback_data: "/model openrouter/upstage/solar-pro-3:free",
+              },
+            ],
             [{ text: "🌙 Kimi K2.5", callback_data: "/model nvidia/moonshotai/kimi-k2.5" }],
-            [{ text: "🔺 Trinity (free)", callback_data: "/model openrouter/arcee-ai/trinity-large-preview:free" }],
+            [
+              {
+                text: "🔺 Trinity (free)",
+                callback_data: "/model openrouter/arcee-ai/trinity-large-preview:free",
+              },
+            ],
             [{ text: "💻 GPT-5.2 Codex", callback_data: "/model openai-codex/gpt-5.2-codex" }],
           ],
         };
